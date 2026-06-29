@@ -1,0 +1,17 @@
+# Cle API — NE JAMAIS COMMITER
+.env
+
+# Fichier trop lourd pour GitHub (46MB) — telecharger depuis MITRE
+enterprise-attack.json
+
+# Logs verbeux
+pipeline_output.log
+pipeline_error.log
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Dossier FAISS si present
+faiss_index/

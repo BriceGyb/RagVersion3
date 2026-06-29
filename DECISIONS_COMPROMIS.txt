@@ -1,0 +1,204 @@
+==============================================================
+  DECISIONS ET COMPROMIS — REPRODUCTION DE L'ARTICLE
+  Article : "LLM-powered threat intelligence: a retrieval-augmented
+             generation approach for cyber attack investigation"
+  Auteur  : Abeer Alhuzali, King Abdulaziz University (2025)
+  Date    : 2026-06-28
+==============================================================
+
+--- CE QUE L'ON A FAIT — RESUME COMPLET ---
+
+L'objectif de ce projet est de reproduire les resultats de l'article
+RAGIntel, puis dans un deuxieme temps de comparer ces resultats avec
+une nouvelle approche utilisant un MCP (Model Context Protocol).
+
+Le travail s'est deroule en plusieurs grandes etapes :
+
+ETAPE A — Construction du pipeline RAG
+  Nous avons implemente le meme pipeline que l'article :
+  1. Chargement de la base MITRE ATT&CK (enterprise-attack.json,
+     697 techniques) comme source de connaissance.
+  2. Decoupage (chunking) hierarchique en deux niveaux :
+     - Chunks parents de 2000 caracteres (contexte large)
+     - Chunks enfants de 500 caracteres (granularite fine)
+  3. Generation des embeddings avec le modele nomic-ai/nomic-embed-text-v1.5
+     (HuggingFace) et stockage dans une base vectorielle FAISS.
+  4. Construction d'un retriever hybride combinant :
+     - Recherche dense (semantique) via FAISS
+     - Recherche lexicale via BM25
+     - Reranking avec FlashrankRerank (ms-marco-MiniLM-L-12-v2)
+     - Compression via ContextualCompressionRetriever
+  5. Chargement des 4 LLMs de l'article :
+     - GPT-4o mini (OpenAI, API)
+     - GPT-3.5 turbo (OpenAI, API)
+     - BART base (Meta, local via HuggingFace)
+     - Flan-T5 small (Google, local via HuggingFace)
+
+ETAPE B — Generation des reponses LLM
+  Pour chacune des 229 requetes du dataset CTI-ATTACK, le pipeline RAG
+  a recupere les 3 contextes les plus pertinents depuis FAISS, puis les
+  a fournis a chacun des 4 LLMs pour generer une reponse (ID MITRE).
+  Duree : ~2h25. Toutes les reponses ont ete sauvegardees dans
+  RAG-evaluation-results.xlsx (916 lignes = 229 x 4 LLMs).
+
+ETAPE C — Evaluation RAGAS (longue et difficile)
+  Cette etape a connu plusieurs problemes et crashs :
+  - Premier crash apres ~18h : erreur KeyError sur 'factual_correctness'
+    due a un changement de nom de colonne entre RAGAS 0.2.13 (article)
+    et RAGAS 0.4.3 (notre version).
+  - Deuxieme crash apres ~29h a 86% : quota OpenAI (10 000 req/jour)
+    puis arret du processus. Toute la progression perdue.
+  - Troisieme tentative : relance avec un systeme de checkpoint qui
+    sauvegarde toutes les 20 lignes. Crash a 8% a cause d'un mauvais
+    wrapper d'embeddings (OpenAIEmbeddings sans methode embed_query).
+  - Quatrieme tentative : correction du wrapper. Crash a nouveau car
+    le nom de la colonne noise_sensitivity retournee par RAGAS 0.4.x
+    est "noise_sensitivity(mode=relevant)" et non "noise_sensitivity".
+  Solution finale : correction de tous ces bugs + checkpoint actif.
+  L'evaluation RAGAS tourne actuellement avec les compromis ci-dessous.
+
+==============================================================
+DECISION 1 : REDUCTION DES MODELES LLM EVALUES
+==============================================================
+
+Article original : 4 LLMs testes
+  - GPT-4o mini (OpenAI)
+  - GPT-3.5 turbo (OpenAI)
+  - BART base (Meta, local)
+  - Flan-T5 small (Google, local)
+
+Notre choix final : 1 LLM retenu
+  - GPT-4o mini (OpenAI) uniquement
+
+Raison :
+  - Flan-T5 small : 0 reponse valide sur 229 requetes. Le modele
+    est trop petit et n'a pas compris le format de sortie attendu
+    (IDs MITRE). Evaluer 229 echantillons vides ne produit aucune
+    information utile.
+  - BART base : 59 reponses manquantes sur 229 (26% d'echec).
+    C'est un modele de summarization, pas de generation instruite.
+    Ses reponses sont hors-sujet pour cette tache CTI.
+  - GPT-3.5 turbo : supprime pour reduire le cout et le temps
+    d'evaluation. GPT-4o est le modele le plus performant de
+    l'article sur CTI-ATTACK et c'est celui qu'on utilisera aussi
+    pour la comparaison MCP. C'est donc le plus pertinent a garder.
+
+Impact : passage de 916 echantillons a 229 (229 x 1 LLM).
+
+==============================================================
+DECISION 2 : REDUCTION DES METRIQUES RAGAS
+==============================================================
+
+Article original : 6 metriques RAGAS (version 0.2.13)
+  - context_recall
+  - context_precision
+  - faithfulness
+  - factual_correctness
+  - answer_relevancy (nomme response_relevancy dans l'article)
+  - noise_sensitivity
+
+Notre choix : 4 metriques retenues
+  - context_recall
+  - context_precision
+  - answer_relevancy
+  - noise_sensitivity
+
+Metriques supprimees :
+  - faithfulness : decompose la reponse en claims atomiques et verifie
+    chaque claim contre le contexte. Necessite 3 a 10 appels LLM par
+    echantillon. C'est la metrique la plus lente. De plus, l'article
+    montre des scores tres bas sur CTI-ATTACK (GPT-4o = 0.069) car
+    les LLMs produisent des reponses avec raisonnement qui s'eloignent
+    du contexte brut recupere.
+  - factual_correctness : meme probleme de decomposition en claims.
+    Scores bas dans l'article (GPT-4o = 0.186) car les ground truth
+    sont de simples listes d'IDs MITRE alors que les LLMs produisent
+    des reponses longues avec explication.
+
+Impact : passage de 5496 appels API a ~1400 appels API.
+
+==============================================================
+DECISION 3 : CALCUL GLOBAL DE CONTEXT_RECALL ET CONTEXT_PRECISION
+==============================================================
+
+Constat de l'article (page 15) :
+  "context recall and context precision are computed based on the
+   queries and the ground truths; therefore, they are irrelevant to
+   the LLMs responses. As a result, these metrics are calculated
+   globally to reflect the overall retrieval accuracy across all queries."
+
+Notre choix : calculer context_recall et context_precision une seule
+fois sur les 229 requetes, independamment du LLM.
+
+Raison : ces deux metriques evaluent le retriever (la partie RAG),
+pas le generateur (le LLM). Le meme contexte est fourni a tous les
+LLMs donc le score est identique pour tous.
+
+Resultats deja obtenus :
+  context_recall    = 0.4192  (article : 0.418) -> quasi identique
+  context_precision = 0.2416  (article : 0.340) -> ecart de 0.10
+
+==============================================================
+DECISION 4 : VERSION RAGAS
+==============================================================
+
+Article original : RAGAS version 0.2.13
+Notre version    : RAGAS version 0.4.3
+
+Raison : impossible de downgrader sans casser les dependances
+existantes. RAGAS 0.4.x a une API differente (noms de colonnes
+differents, configuration LLM differente) mais les metriques
+sont equivalentes conceptuellement.
+
+Difference notable : la colonne noise_sensitivity dans RAGAS 0.4.x
+s'appelle "noise_sensitivity(mode=relevant)" et non "noise_sensitivity".
+
+Impact : les scores peuvent differer legerement de l'article. Cette
+limite sera mentionnee dans le rapport.
+
+==============================================================
+DECISION 5 : MODELE JUGE POUR RAGAS
+==============================================================
+
+Article original : non specifie
+Notre choix      : GPT-4o mini comme juge RAGAS
+
+Raison : cout reduit tout en maintenant une qualite suffisante.
+
+==============================================================
+DECISION 6 : SYSTEME DE CHECKPOINT
+==============================================================
+
+Probleme rencontre : l'evaluation RAGAS a crashe plusieurs fois
+(quota API, timeout, arret du processus) apres plusieurs heures,
+perdant toute la progression a chaque fois.
+
+Solution : sauvegarde automatique dans ragas_checkpoint.csv et
+ragas_checkpoint_context.csv apres chaque batch de 20 echantillons.
+Au redemarrage, le script reprend exactement la ou il s'etait arrete.
+
+==============================================================
+RESUME : BILAN DES COMPROMIS
+==============================================================
+
+                        ARTICLE           NOTRE REPRODUCTION
+LLMs evalues            4                 1 (GPT-4o mini)
+Metriques RAGAS         6                 4 (sans faithfulness
+                                             et factual_correctness)
+Context recall/prec.    1x global         1x global (idem article)
+Version RAGAS           0.2.13            0.4.3
+Juge RAGAS              non specifie      gpt-4o-mini
+Dataset CTI-ATTACK      229 requetes      229 requetes (identique)
+Plateforme article      Google Colab TPU  CPU Windows local
+Duree RAGAS article     ~50 minutes       ~1h (avec checkpoints)
+Appels API RAGAS        ~N/A              ~1400 (vs ~5500 original)
+
+Scores deja obtenus (etape 1 terminee) :
+  context_recall    = 0.4192  (article : 0.418)
+  context_precision = 0.2416  (article : 0.340)
+
+Scores en attente (etape 2 en cours) :
+  answer_relevancy   (article GPT-4o : 0.684)
+  noise_sensitivity  (article GPT-4o : 0.023)
+
+==============================================================

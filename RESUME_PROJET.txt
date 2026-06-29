@@ -1,0 +1,89 @@
+==============================================================
+  RESUME DU PROJET RAGIntel — A LIRE EN DEBUT DE SESSION
+  Date de derniere mise a jour : 2026-06-26
+==============================================================
+
+--- C'EST QUOI CE PROJET ? ---
+
+Pipeline RAG (Retrieval-Augmented Generation) pour la Cyber Threat Intelligence (CTI).
+But : prendre des rapports CTI en texte libre et identifier automatiquement les techniques
+MITRE ATT&CK correspondantes (ex: T1059, T1078...).
+4 LLMs sont compares : GPT-3.5-turbo, GPT-4o-mini, FLAN-T5-small, BART-base.
+Evaluation des performances avec le framework RAGAS.
+
+--- FICHIERS IMPORTANTS ---
+
+rag_cti.py              → script principal, tout le pipeline est dedans
+CTI-ATTACK.xlsx         → dataset : 229 requetes CTI + reponses LLMs (DEJA REMPLIES)
+enterprise-attack.json  → base MITRE ATT&CK officielle (697 techniques STIX)
+pipeline_output.log     → logs verbose de tout ce que le pipeline a fait
+pipeline_error.log      → progression (barres tqdm) — 478 lignes au 2026-06-26
+RAG-evaluation-results.xlsx  → FICHIER DE SORTIE FINAL (pas encore cree)
+timing_summary.txt      → resume des temps d'execution (pas encore cree)
+RESUME_PROJET.txt       → ce fichier
+
+--- ARCHITECTURE DU PIPELINE (rag_cti.py) ---
+
+Etape 1 : Charger CTI-ATTACK.xlsx (229 requetes)
+Etape 2 : Charger enterprise-attack.json (697 techniques MITRE)
+Etape 3 : Decouper en chunks parent (2000 tokens) + enfant (500 tokens)
+Etape 4 : Creer retriever hybride
+           - Dense : Nomic embeddings (nomic-ai/nomic-embed-text-v1.5) → FAISS
+           - Lexical : BM25Retriever
+           - Reranking : FlashrankRerank (ms-marco-MiniLM-L-12-v2)
+Etape 5 : Charger 4 LLMs
+           - openai-gpt-3.5-turbo (ChatOpenAI, temperature=0.1)
+           - openai-gpt-4o → gpt-4o-mini en realite (ChatOpenAI, temperature=0.1)
+           - flan-t5 → google/flan-t5-small (HuggingFace local, CPU)
+           - bart → facebook/bart-base (HuggingFace local, CPU)
+Etape 6 : Pour chaque requete, appel RAG → context + LLM → reponse (IDs MITRE)
+           Sauvegarde progressive dans CTI-ATTACK.xlsx
+Etape 7 : Evaluation RAGAS avec 6 metriques :
+           LLMContextRecall, ContextPrecision, Faithfulness,
+           FactualCorrectness, AnswerRelevancy, NoiseSensitivity
+           → Sortie : RAG-evaluation-results.xlsx
+
+--- ETAT AU 2026-06-26 ---
+
+[OK] Etapes 1-6 : TERMINEES
+     - 229/229 requetes traitees par les 4 LLMs
+     - Reponses sauvegardees dans CTI-ATTACK.xlsx
+     - Duree totale etape 6 : ~2h25
+
+[EN COURS] Etape 7 : RAGAS tourne en silence
+     - 916 echantillons (229 requetes x 4 LLMs)
+     - ~4580 appels OpenAI necessaires (5 metriques LLM-judge)
+     - Duree estimee : 2 a 4 heures supplementaires
+     - RAG-evaluation-results.xlsx pas encore cree
+
+--- SI LE PC A ETE ETEINT ET RELANCE ---
+
+Au prochain lancement de "python rag_cti.py" :
+  1. Recharge MITRE JSON + recrée retriever FAISS (~5-10 min)
+  2. check_missing_responses() detecte que CTI-ATTACK.xlsx est deja rempli
+     → SAUTE toute l'etape LLM (etape 6), ne refait pas les 229 requetes
+  3. Lance directement l'evaluation RAGAS → encore ~2-4h
+  4. Produit RAG-evaluation-results.xlsx et timing_summary.txt a la fin
+
+IMPORTANT : La progression RAGAS n'est PAS sauvegardee en cours de route.
+Si le PC s'eteint pendant RAGAS → repart de zero pour RAGAS uniquement.
+Mais les reponses LLMs dans CTI-ATTACK.xlsx restent acquises.
+
+--- COMMENT RELANCER ---
+
+cd C:\Users\bjgyebre\Desktop\RAGIntel-main
+python rag_cti.py
+
+Ou avec logs :
+python rag_cti.py > pipeline_output.log 2> pipeline_error.log
+
+--- NOTES TECHNIQUES ---
+
+- Le modele flan-t5 est charge depuis HuggingFace (google/flan-t5-small)
+- BART est charge depuis HuggingFace (facebook/bart-base)
+- Execution sur CPU (pas de GPU detecte)
+- Cle OpenAI dans le fichier .env
+- Import "langchain_classic" utilise → verifier si ce package est installe
+- Des DeprecationWarnings ragas existent (metrics bientot dans ragas.metrics.collections)
+
+==============================================================

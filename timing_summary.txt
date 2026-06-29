@@ -1,0 +1,9 @@
+Data Loading: 0.17 seconds
+MITRE JSON Loading and Splitting: 0.25 seconds
+Retriever Creation: 191.55 seconds
+LLM Loading: 2.05 seconds
+Initialize Response Columns: 0.00 seconds
+RAG System Building: 0.00 seconds
+Query Processing: 8688.58 seconds
+Evaluation: 66986.53 seconds
+Total Runtime: 75869.13 seconds
