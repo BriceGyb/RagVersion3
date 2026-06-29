@@ -15,3 +15,6 @@ __pycache__/
 
 # Dossier FAISS si present
 faiss_index/
+
+# Memoire Claude Code (ne pas commiter)
+.claude/
