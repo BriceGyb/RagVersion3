@@ -75,7 +75,7 @@ ETAPE E — Inference MCP (TERMINE)
   - Checkpoint toutes les requetes
   - Resultats : mcp_agent_results.xlsx, mcp_checkpoint.csv
 
---- PHASE 3 : EVALUATION RAGAS MCP (A FAIRE) ---
+--- PHASE 3 : EVALUATION RAGAS MCP (TERMINE) ---
 
 ETAPE F — Evaluation RAGAS sur resultats MCP
   Fichier : run_ragas_mcp.py
@@ -83,16 +83,43 @@ ETAPE F — Evaluation RAGAS sur resultats MCP
       context_recall, context_precision, answer_relevancy, noise_sensitivity
   - Juge LLM : gpt-4o-mini (identique au RAG)
   - 229 echantillons (1 seul modele : mcp-gpt-4o-mini)
-  - Checkpoint actif
+  - Checkpoint actif (ragas_mcp_checkpoint.csv, ragas_mcp_checkpoint_context.csv)
   - Sortie : mcp_evaluation_results.xlsx, mcp_ragas_scores.xlsx
-  - COMMANDE : python run_ragas_mcp.py
 
---- PHASE 4 : COMPARAISON ET RAPPORT (A FAIRE) ---
+  SCORES FINAUX MCP (gpt-4o-mini, CTI-ATTACK, 229 requetes) :
+    context_recall    = 0.4156
+    context_precision = 0.3314
+    answer_relevancy   = 0.5783
+    noise_sensitivity  = 0.0732
 
-ETAPE G — Tableau comparatif RAG vs MCP
-  Comparer les 4 metriques RAGAS entre :
-    - RAG    : GPT-4o + retriever hybride FAISS+BM25 (article reproduce)
-    - MCP    : GPT-4o + 15 outils MITRE actifs (notre contribution)
+--- PHASE 4 : COMPARAISON ET RAPPORT ---
+
+ETAPE G — Tableau comparatif RAG vs MCP (TERMINE)
+
+  +--------------------+-----------+-----------+-------------+
+  | Metrique           | RAG       | MCP       | Difference  |
+  +--------------------+-----------+-----------+-------------+
+  | context_recall     | 0.4192    | 0.4156    | -0.0036     |
+  | context_precision  | 0.2416    | 0.3314    | +0.0898     |
+  | answer_relevancy   | 0.2455    | 0.5783    | +0.3328     |
+  | noise_sensitivity  | 0.0126    | 0.0732    | +0.0606     |
+  +--------------------+-----------+-----------+-------------+
+
+  Analyse rapide :
+  - context_recall : quasi identique, les deux approches retrouvent
+    une proportion similaire des techniques pertinentes.
+  - context_precision : le MCP est plus precis (+9pts) car les outils
+    de recherche ciblee (search_techniques, get_techniques_by_tactic)
+    filtrent mieux que le retriever FAISS+BM25 generique.
+  - answer_relevancy : ecart majeur (+33pts, MCP x2.3 superieur).
+    L'agent MCP raisonne par etapes (decompose -> search -> validate
+    -> format_final_answer) ce qui produit des reponses mieux
+    structurees et alignees sur la question posee.
+  - noise_sensitivity : le MCP est plus sensible au bruit (+6pts,
+    moins bon). Hypothese : les 11.5 appels d'outils en moyenne
+    introduisent davantage de contexte intermediaire (resultats
+    d'outils non filtres) qui peut distraire le modele lors de la
+    generation finale.
 
 ETAPE H — Redaction de l'article
   Sections a rediger :
@@ -138,7 +165,7 @@ DECISION 7 : MEME MODELE POUR RAG ET MCP (gpt-4o-mini)
   (RAG passif vs MCP actif) et non au modele.
 
 ==============================================================
-SCORES ACTUELS
+SCORES ACTUELS (FINAUX)
 ==============================================================
 
   RAG (GPT-4o mini, CTI-ATTACK, 229 requetes) :
@@ -148,15 +175,18 @@ SCORES ACTUELS
     noise_sensitivity = 0.0126
 
   MCP (gpt-4o-mini, CTI-ATTACK, 229 requetes) :
-    -> EN ATTENTE : lancer python run_ragas_mcp.py
+    context_recall    = 0.4156
+    context_precision = 0.3314
+    answer_relevancy  = 0.5783
+    noise_sensitivity = 0.0732
 
 ==============================================================
 CE QUI RESTE A FAIRE
 ==============================================================
 
-  [ ] 1. Lancer : python run_ragas_mcp.py  (~1h)
-  [ ] 2. Comparer les scores RAG vs MCP
-  [ ] 3. Rediger le tableau comparatif pour l'article
+  [x] 1. Lancer : python run_ragas_mcp.py
+  [x] 2. Comparer les scores RAG vs MCP
+  [ ] 3. Rediger le tableau comparatif pour l'article (brouillon ci-dessus)
   [ ] 4. Rediger l'article complet
   [ ] 5. Commit final avec tous les resultats
 
